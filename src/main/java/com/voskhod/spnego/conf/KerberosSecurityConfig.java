@@ -1,5 +1,7 @@
 package com.voskhod.spnego.conf;
 
+import com.voskhod.spnego.service.AppAuthenticationSuccessHandler;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -12,6 +14,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.kerberos.authentication.KerberosAuthenticationProvider;
 import org.springframework.security.kerberos.authentication.KerberosServiceAuthenticationProvider;
 import org.springframework.security.kerberos.authentication.sun.SunJaasKerberosClient;
@@ -33,6 +36,16 @@ public class KerberosSecurityConfig extends WebSecurityConfigurerAdapter {
     @Value("${krb5.keytab-location}")
     private String keytabLocation;
 
+    @Value("${include.basic-auth}")
+    private boolean includeBasicAuth;
+
+    private final AppAuthenticationSuccessHandler appHandler;
+
+    @Autowired
+    public KerberosSecurityConfig(AppAuthenticationSuccessHandler appHandler) {
+        this.appHandler = appHandler;
+    }
+
     @Override
     protected void configure(HttpSecurity http) throws Exception {
 
@@ -52,9 +65,7 @@ public class KerberosSecurityConfig extends WebSecurityConfigurerAdapter {
         http
                 .formLogin()
                 .loginPage("/login")
-                //TODO implement success handler
-//                .successHandler(appHandler)
-                .successForwardUrl("/welcome")
+                .successHandler(appHandler)
                 .failureUrl("/login?error")
                 .usernameParameter("username")
                 .passwordParameter("password")
@@ -79,6 +90,13 @@ public class KerberosSecurityConfig extends WebSecurityConfigurerAdapter {
     protected void configure(AuthenticationManagerBuilder auth) throws Exception {
         auth.authenticationProvider(kerberosAuthenticationProvider())
                 .authenticationProvider(kerberosServiceAuthenticationProvider());
+
+        if (includeBasicAuth) {
+            auth.inMemoryAuthentication()
+                    .withUser("user").password(passwordEncoder().encode("123")).roles("USER")
+                    .and()
+                    .withUser("admin").password(passwordEncoder().encode("1234")).roles("ADMIN");
+        }
     }
 
     @Bean
@@ -127,6 +145,11 @@ public class KerberosSecurityConfig extends WebSecurityConfigurerAdapter {
             return new User(username, "notUsed", true, true,
                     true, true, AuthorityUtils.createAuthorityList("ROLE_USER"));
         };
+    }
+
+    @Bean
+    public BCryptPasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(11);
     }
 
 }
